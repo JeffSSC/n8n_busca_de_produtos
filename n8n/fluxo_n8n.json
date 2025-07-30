@@ -1,0 +1,221 @@
+{
+  "name": "ROTTA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluxo-teste",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "45f178bf-f7f4-40cf-a05b-acf63ea272c5",
+      "name": "Webhook",
+      "webhookId": "503fb5d5-29c9-40d5-bcfd-e6c9f5f650d1"
+    },
+    {
+      "parameters": {
+        "jsCode": "let listaDePesquisasDaIA = $('Filtragem_Resposta').all();\n\nconst resultadosDoLoop = $(\"Loop Over Items\").all();\n\nconst produtosAgrupados = listaDePesquisasDaIA.map((pesquisaAtual, indice) => {\n  \n  const envelopeDoResultado = resultadosDoLoop.find(envelope => envelope.json.runIndex === indice);\n\n  const produtosEncontrados = envelopeDoResultado?.json?.items || [];\n\n  const produtosUnicos = [];\n  const codigosVistos = new Set();\n  \n  for (const produto of produtosEncontrados) {\n    \n    if (!codigosVistos.has(produto.json.codigo)) {\n      \n      produtosUnicos.push(produto.json);\n      \n      codigosVistos.add(produto.json.codigo);\n    }\n  }\n\n  \n  // Retorna o JSON formatado:\n  return {\n    termo_pesquisado: pesquisaAtual.json.termo_pesquisado,\n    qtde: pesquisaAtual.json.qtde,\n    produtos_encontrados: produtosUnicos,\n  };\n});\n\n\nreturn {\n  possiveis_produtos: produtosAgrupados\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -16
+      ],
+      "id": "6f57bfdc-9214-4533-83ad-f1dab20a5ff3",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ranked_products AS (\n  SELECT\n    codigo,\n    descricao,\n    similarity(\n      descricao_search,\n      UPPER(f_unaccent('{{ $json.termo_pesquisado }}')) -- MUDANÇA AQUI\n    ) AS similaridade\n  FROM produtos\n  WHERE\n    similarity(\n      descricao_search,\n      UPPER(f_unaccent('{{ $json.termo_pesquisado }}')) -- MUDANÇA AQUI\n    ) > 0.11\n    OR\n    UPPER(f_unaccent(codigo)) LIKE '%' || UPPER(f_unaccent('{{ $json.termo_pesquisado }}')) || '%' -- MUDANÇA AQUI\n)\nSELECT codigo, descricao FROM ranked_products\nORDER BY similaridade DESC",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1072,
+        160
+      ],
+      "id": "17d8e1d9-bebb-41d5-9dba-d2be65234f2b",
+      "name": "Busca_Produto_Unitario",
+      "credentials": {
+        "postgres": {
+          "id": "JvF3r3t9LnNWfPew",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        880,
+        0
+      ],
+      "id": "80024cc5-8f6b-4e9d-9ecd-b33aa75b007a",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Armazena o indice atual do loop nessa variavel\nlet runIndex = $runIndex;\n\nconst pesquisa = $(\"Loop Over Items\").all();\n\nconst termoPesquisado = pesquisa[0].json.termo_pesquisado;\n\n// Retorna a busca com o JSON estruturado dessa forma:\nconst items = {\n  \"runIndex\": runIndex,\n  \"pesquisa\": termoPesquisado,\n  \"items\": $(\"Busca_Produto_Unitario\").all()\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        160
+      ],
+      "id": "80250b55-bfb0-4ce9-b17f-d56e681657c4",
+      "name": "Filtragem_Busca"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "chatgpt-4o-latest",
+          "mode": "list",
+          "cachedResultName": "CHATGPT-4O-LATEST"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Você é uma API de extração de dados que SEMPRE responde com JSON.\n\nSua tarefa é analisar o texto do usuário e extrair os itens e suas quantidades.\n\nSua resposta DEVE ser um objeto JSON. Este objeto JSON DEVE ter uma única chave principal chamada \"items\". O valor da chave \"items\" DEVE ser um array de objetos. Cada objeto no array deve ter duas chaves: \"qtde\" (um número) e \"termo_pesquisado\" (um texto).\n\nExemplo de Saída EXATA:\n{\"items\": [{\"qtde\": 22, \"termo_pesquisado\": \"acai\"}, {\"qtde\": 15, \"termo_pesquisado\": \"moletom\"}]}\n\nNÃO use outras chaves como \"result\" ou \"resultado\". A chave principal é \"items\".\nNÃO adicione nenhum texto, explicação ou formatação markdown. A resposta é APENAS o objeto JSON.\n\nTexto do usuário:\n{{ $json.body.texto }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        80,
+        0
+      ],
+      "id": "bc991957-5922-4615-baea-620c4b784ffd",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "XF0VVxMbk9YsP3Yb",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retorna apenas o JSON recebido pela IA\nreturn $input.first().json.choices[0].message.content.items"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        0
+      ],
+      "id": "a9c58fcd-36dc-4660-8159-7a3287b1635f",
+      "name": "Filtragem_Resposta"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        []
+      ]
+    },
+    "Busca_Produto_Unitario": {
+      "main": [
+        [
+          {
+            "node": "Filtragem_Busca",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busca_Produto_Unitario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtragem_Busca": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Filtragem_Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtragem_Resposta": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ad100a70-5312-4d0c-a2dc-259105963d44",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cc0b8db5db15176bb805d0f04b6488d2bfca1127d2e45151370021e4b0da9406"
+  },
+  "id": "WBWZo25V6nThw11E",
+  "tags": []
+}
