@@ -18,7 +18,7 @@ Se trata de um fluxo n8n que filtra a requisição recebida pelo webhook e retor
 
 - Webhook recebe uma requisição POST com body form-data e key texto:
 
-<img src="assets/ReqExample.png">
+<img src="assets/ReqExample.jpg">
 
 - Esse texto é filtrado por algum modelo de IA, nesse caso o GPT 4o para retornar um JSON desse tipo:
 
